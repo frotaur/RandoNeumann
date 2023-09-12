@@ -146,7 +146,7 @@ class VonNeumann(Automaton):
         self.is_killed = ((self.is_ord*self.inc_spes + self.is_spe*self.inc_ords + self.is_conf*self.inc_spes)>0).to(torch.uint8)
 
     def compute_is_ground(self):
-        self.is_ground = ((1-self.is_ord)*(1-self.is_spe)*(1-self.is_conf)).to(torch.uint8)
+        self.is_ground = ((1-self.is_ord)*(1-self.is_spe)*(1-self.is_conf)*(1-self.is_sens)).to(torch.uint8)
 
 
     def compute_conf(self):
@@ -184,6 +184,7 @@ class VonNeumann(Automaton):
         self.births = torch.where((self.sens_state==0b1111),9,self.births) # Confluent
 
         self.is_sens = torch.where(self.births>0,0,self.is_sens)
+        self.sens_state = self.sens_state*self.is_sens
     
     def make_births(self):
         self.ord_e = torch.where(self.births==1,1,self.ord_e)
@@ -197,6 +198,8 @@ class VonNeumann(Automaton):
         self.spe_s = torch.where(self.births==7,1,self.spe_s)
 
         self.is_conf = torch.where(self.births==9,1,self.is_conf)
+
+        self.births = torch.zeros_like(self.births)
 
     def compute_ord_excitations(self):
         inc_ord_e = torch.roll(self.ord_w*self.excitations,shifts=-1,dims=2)
