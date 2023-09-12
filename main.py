@@ -1,5 +1,5 @@
 import pygame
-# from Camera import Camera
+from Camera import Camera
 from Automaton import *
 import cv2, torch, numpy as np
 
@@ -8,35 +8,46 @@ import cv2, torch, numpy as np
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 5
-W,H = 200,200
+el_size = 10
+W,H = 50,50
 
 font = pygame.font.SysFont(None, 25) 
 # Load the images for the automaton
-im_0 = pygame.transform.scale(pygame.image.load('graphics/star.png'), (el_size, el_size))
+xm = pygame.transform.scale(pygame.image.load('graphics/xm.png'), (el_size, el_size))
+xp = pygame.transform.scale(pygame.image.load('graphics/xp.png'), (el_size, el_size))
+ym = pygame.transform.scale(pygame.image.load('graphics/ym.png'), (el_size, el_size))
+yp = pygame.transform.scale(pygame.image.load('graphics/yp.png'), (el_size, el_size))
 
+sxm = pygame.transform.scale(pygame.image.load('graphics/sxm.png'), (el_size, el_size))
+sxp = pygame.transform.scale(pygame.image.load('graphics/sxp.png'), (el_size, el_size))
+sym = pygame.transform.scale(pygame.image.load('graphics/sym.png'), (el_size, el_size))
+syp = pygame.transform.scale(pygame.image.load('graphics/syp.png'), (el_size, el_size))
 
+conf = pygame.transform.scale(pygame.image.load('graphics/conf.png'), (el_size, el_size))
+sens0 = pygame.transform.scale(pygame.image.load('graphics/sens0.png'), (el_size, el_size))
+excited = pygame.transform.scale(pygame.image.load('graphics/excited.png'), (el_size, el_size))
+excited_flip = pygame.transform.scale(pygame.image.load('graphics/excited_flip.png'), (el_size, el_size))
 
 screen_W, screen_H = W*el_size, H*el_size
 
 screen = pygame.display.set_mode((screen_W,screen_H),flags=pygame.SCALED|pygame.RESIZABLE)
 clock = pygame.time.Clock()
 running = True
-# camera = Camera(W,H)
+camera = Camera(screen_W,screen_H)
 
-fps = 30
+fps = 1
 
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
 # Initialize the automaton
-auto = EmptyAuto((H,W))
+auto = VonNeumann((H,W))
 
 updating = True
 recording = False
 launch_video = False
 
-def draw_game_state(world_state,el_size):
+def draw_game_state(world_state,excited_state,conf_out,el_size):
     """
         Draws the game state on the screen, using the world_state array.
         For visualizing bigger pixels.
@@ -48,23 +59,38 @@ def draw_game_state(world_state,el_size):
         Returns:
 
     """
-    use_graphics = False
     W,H,_ = world_state.shape
     surf = pygame.Surface((el_size*W, el_size*H))
 
+    for i in range(W):
+        for j in range(H):
+            type = world_state[i,j,0]
+            if(type==1):
+                surf.blit(xp, (i*el_size, j*el_size))
+            elif(type==2):
+                surf.blit(xm, (i*el_size, j*el_size))
+            elif(type==3):
+                surf.blit(yp, (i*el_size, j*el_size))
+            elif(type==4):
+                surf.blit(ym, (i*el_size, j*el_size))
+            elif(type==5):
+                surf.blit(sxp, (i*el_size, j*el_size))
+            elif(type==6):
+                surf.blit(sxm, (i*el_size, j*el_size))
+            elif(type==7):
+                surf.blit(syp, (i*el_size, j*el_size))
+            elif(type==8):
+                surf.blit(sym, (i*el_size, j*el_size))
+            elif(type==9):
+                surf.blit(conf, (i*el_size, j*el_size))
+                if(conf_out[i,j,0]>0):
+                    surf.blit(excited_flip, (i*el_size, j*el_size))
+            elif(type==10):
+                surf.blit(sens0, (i*el_size, j*el_size))
 
-    if(not use_graphics):
-        for i in range(W):
-            for j in range(H):
-                color = world_state[i, j]  # Get the color from your array
-                pygame.draw.rect(surf, color, (i*el_size, j*el_size, el_size, el_size))
-    else :
-        for i in range(W):
-            for j in range(H):
-                color = world_state[i, j]
-                if(not (color==0).all()):
-                    surf.blit(im_0, (i*el_size, j*el_size))
 
+            if(excited_state[i,j,0]>0):
+                surf.blit(excited, (i*el_size, j*el_size))
     #PIXEL VIEWING, EFFICIENT BUT UGLY. Need el_size=1.
     # surf = pygame.surfarray.make_surface(world_state)
     # screen.blit(surf, (0,0))
@@ -82,15 +108,15 @@ while running:
             if(event.key == pygame.K_r):
                 recording= not recording
         # Handle the event loop for the camera (disabled for now)
-        # camera.handle_event(event)
+        camera.handle_event(event)
     
     if(updating):
         # Step the automaton if we are updating
         auto.step()
-    
+    auto.draw()
     #Retrieve the world_state from automaton
-    world_state = auto.worldmap
-    surface= draw_game_state(world_state,el_size)
+    world_state, excited_state, conf_out = auto.worldmap
+    surface= draw_game_state(world_state,excited_state,conf_out,el_size)
 
     #For recording
     if(recording):
@@ -108,8 +134,8 @@ while running:
     screen.fill((0, 0, 0))
 
     # Draw the scaled surface on the window (disabled for now)
-    # zoomed_surface = camera.apply(surface)
-    screen.blit(surface, (0, 0))
+    zoomed_surface = camera.apply(surface)
+    screen.blit(zoomed_surface, (0, 0))
     clock.tick(fps)  # limits FPS
     curfps= clock.get_fps()
     fps_text = font.render("FPS: " + str(int(curfps)), True, (255, 0, 0))  # Red color
