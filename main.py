@@ -1,14 +1,13 @@
 import pygame
 from Camera import Camera
 from Automaton import *
-import cv2, torch, numpy as np
-
+import cv2, torch, numpy as np, os
 # TODO : Migrate all this into a big class. That way the helper methods are easier to write.
 
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 2
+el_size = 9
 W,H = 100,100
 
 font = pygame.font.SysFont(None, 25) 
@@ -36,13 +35,14 @@ clock = pygame.time.Clock()
 running = True
 camera = Camera(screen_W,screen_H)
 
-fps = 25
+
+fps = 15
 
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
 # Initialize the automaton
-auto = VonNeumann((H,W),device='cuda')
+auto = VonNeumann((H,W),device='cpu')
 
 updating = False
 recording = False
@@ -110,14 +110,18 @@ while running:
                 updating=not updating
             if(event.key == pygame.K_r):
                 recording= not recording
+            if(event.key ==pygame.K_o):
+                auto.reset_state()
+            if(event.key == pygame.K_e):
+                auto.inj_excitations()
         # Handle the event loop for the camera (disabled for now)
         camera.handle_event(event)
     
     if(updating):
         # Step the automaton if we are updating
         auto.step()
-    if(counter%100==0):
-        auto.draw()
+
+    auto.draw()
     #Retrieve the world_state from automaton
     world_state, excited_state, conf_out = auto.worldmap
     surface= draw_game_state(world_state,excited_state,conf_out,el_size)
@@ -126,13 +130,23 @@ while running:
     if(recording):
         if(not launch_video):
             launch_video = True
-            fourcc = cv2.VideoWriter_fourcc(*'FFV1')
-            vid_loc = 'Videos/lgca1.mkv'
-            video_out = cv2.VideoWriter(vid_loc, fourcc, 30.0, (W, H))
+            os.makedirs('Videos',exist_ok=True)
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            numvids = len(os.listdir('Videos/'))
+            vid_loc = f'Videos/Neu_{numvids}.mp4'
+            video_out = cv2.VideoWriter(vid_loc, fourcc, 15.0, (screen_W, screen_H))
 
-        frame_bgr = cv2.cvtColor(auto.worldmap, cv2.COLOR_RGB2BGR)
+        # Convert Pygame surface to a string buffer
+        frame_str = pygame.image.tostring(surface, "RGB")
+
+        # Convert this string buffer to a numpy array
+        frame_np = np.frombuffer(frame_str, dtype=np.uint8).reshape(screen_W, screen_H, 3)
+
+        frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
+
         video_out.write(frame_bgr)
-        pygame.draw.circle(surface, (255,0,0), (W-10,H-10),2)
+
+        pygame.draw.circle(surface, (255,0,0), (screen_W-10,screen_H-10),2)
     
     # Clear the screen
     screen.fill((0, 0, 0))
@@ -150,9 +164,8 @@ while running:
     counter+=1
 
 
-
-  
+if(launch_video):
+    print('release kraken')
+    video_out.release()
 
 pygame.quit()
-if(launch_video):
-    video_out.release()
