@@ -1,6 +1,8 @@
 import numpy as np
 import random, torch
 from torchenhanced import DevModule
+from init_maker import get_sens_benchmark
+
 
 class Automaton(DevModule) :
     """
@@ -91,14 +93,11 @@ class VonNeumann(Automaton):
     def __init__(self, size, device='cpu'):
         super().__init__(size, device=device)
 
-        state = torch.randint(1,10,(1,*size), device=device)
-
-        # state = torch.zeros_like(state)
-
+        state = torch.randint(0,10,(1,*size), device=device)
         # Excitations :
-        self.excitations = (torch.rand((1,*size), device=device)<0.8).to(dtype=torch.uint8)
+        self.excitations = (torch.rand((1,*size), device=device)<0.5).to(dtype=torch.uint8)
 
-        # self.excitations[0,self.h//2,self.w//2]=1
+        # state=self.make_state_bench() # UNCOMMENT TO USE BENCHMARK 
         # Ordinary transmissions :
         self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
         self.ord_w = torch.where(state==2,1,0).to(torch.uint8)
@@ -133,6 +132,18 @@ class VonNeumann(Automaton):
 
         self._worldmap = torch.zeros((1,self.h,self.w), device=device, dtype=torch.int)
 
+    def make_state_bench(self):
+        """
+            Replaces the state with the benchmark state
+        """
+        state= torch.zeros((1,*self.size), device=self.device, dtype=torch.int)
+        self.excitations = torch.zeros((1,*self.size), device=self.device, dtype=torch.int)
+
+        bench_state, bench_excit = get_sens_benchmark()
+        state[0,2:9+2,2:5+2] = bench_state.to(self.device)
+        self.excitations[0,2:9+2,2:5+2] = bench_excit.to(self.device)
+
+        return state
     def compute_is_ord(self):
         self.is_ord = ((self.ord_e+self.ord_w+self.ord_s+self.ord_n)>0).to(torch.uint8)
     
@@ -152,10 +163,11 @@ class VonNeumann(Automaton):
     def compute_conf(self):
         self.compute_inhibitions()
 
-        inc_conf_e = torch.roll(self.conf_out*self.is_conf,shifts=-1,dims=2)
-        inc_conf_w = torch.roll(self.conf_out*self.is_conf,shifts=+1,dims=2)
-        inc_conf_s = torch.roll(self.conf_out*self.is_conf,shifts=-1,dims=1)
-        inc_conf_n = torch.roll(self.conf_out*self.is_conf,shifts=+1,dims=1)
+        conf_act = self.conf_out*self.is_conf
+        inc_conf_e = torch.roll(conf_act,shifts=-1,dims=2)
+        inc_conf_w = torch.roll(conf_act,shifts=+1,dims=2)
+        inc_conf_s = torch.roll(conf_act,shifts=-1,dims=1)
+        inc_conf_n = torch.roll(conf_act,shifts=+1,dims=1)
 
         self.inc_conf_ords = self.is_ord*(inc_conf_e*(1-self.ord_e)+inc_conf_w*(1-self.ord_w)+inc_conf_s*(1-self.ord_s)+inc_conf_n*(1-self.ord_n))
         self.inc_conf_spes = self.is_spe*(inc_conf_e*(1-self.spe_e)+inc_conf_w*(1-self.spe_w)+inc_conf_s*(1-self.spe_s)+inc_conf_n*(1-self.spe_n))
@@ -171,15 +183,17 @@ class VonNeumann(Automaton):
         self.sens_state = ((self.sens_state << 1)+inc_exc)*self.is_sens
 
         self.births = torch.zeros_like(self.is_sens,dtype=torch.uint8)
+
+        # I think this is very inefficient also, not sure how to batch it
         self.births = torch.where((self.sens_state==0b10000),1,self.births) # East
-        self.births = torch.where((self.sens_state==0b10001),4,self.births) # North
         self.births = torch.where((self.sens_state==0b1001),2,self.births) # West
         self.births = torch.where((self.sens_state==0b1010),3,self.births) # South
+        self.births = torch.where((self.sens_state==0b10001),4,self.births) # North
 
         self.births = torch.where((self.sens_state==0b1011),1+4,self.births) # East Special
-        self.births = torch.where((self.sens_state==0b1100),4+4,self.births) # North Special
         self.births = torch.where((self.sens_state==0b1101),2+4,self.births) # West Special
         self.births = torch.where((self.sens_state==0b1110),3+4,self.births) # South Special
+        self.births = torch.where((self.sens_state==0b1100),4+4,self.births) # North Special
 
         self.births = torch.where((self.sens_state==0b1111),9,self.births) # Confluent
 
@@ -187,6 +201,10 @@ class VonNeumann(Automaton):
         self.sens_state = self.sens_state*self.is_sens
     
     def make_births(self):
+        # Extinguish remaining excitations on birthing cells
+        self.excitations = torch.where(self.births>0,0,self.excitations) 
+
+        # This cannot be batched I think
         self.ord_e = torch.where(self.births==1,1,self.ord_e)
         self.ord_n = torch.where(self.births==4,1,self.ord_n)
         self.ord_w = torch.where(self.births==2,1,self.ord_w)
@@ -202,6 +220,7 @@ class VonNeumann(Automaton):
         self.births = torch.zeros_like(self.births)
 
     def compute_ord_excitations(self):
+        # This cannot be batched I think
         inc_ord_e = torch.roll(self.ord_w*self.excitations,shifts=-1,dims=2)
         inc_ord_w = torch.roll(self.ord_e*self.excitations,shifts=1,dims=2)
         inc_ord_s = torch.roll(self.ord_n*self.excitations,shifts=-1,dims=1)
@@ -210,6 +229,7 @@ class VonNeumann(Automaton):
         self.inc_ords = inc_ord_e*(1-self.ord_e)+inc_ord_w*(1-self.ord_w)+inc_ord_s*(1-self.ord_s)+inc_ord_n*(1-self.ord_n)
 
     def compute_inhibitions(self):
+        # This cannot be batched I think
         inc_inh_e = torch.roll(self.ord_w*(1-self.excitations),shifts=-1,dims=2)
         inc_inh_w = torch.roll(self.ord_e*(1-self.excitations),shifts=1,dims=2)
         inc_inh_s = torch.roll(self.ord_n*(1-self.excitations),shifts=-1,dims=1)
@@ -221,6 +241,7 @@ class VonNeumann(Automaton):
         """
             Computes the excitations of the special particles, and returns the purged incoming excitations.
         """
+        # This cannot be batched I think
         inc_spe_e = torch.roll(self.spe_w*self.excitations,shifts=-1,dims=2)
         inc_spe_w = torch.roll(self.spe_e*self.excitations,shifts=1,dims=2)
         inc_spe_s = torch.roll(self.spe_n*self.excitations,shifts=-1,dims=1)
@@ -238,7 +259,7 @@ class VonNeumann(Automaton):
         
 
 
-        self.excitations = ((self.inc_ords+self.inc_spes+self.inc_conf_ords+self.inc_conf_spes)>0).to(torch.int)
+        self.excitations = ((self.inc_ords+self.inc_spes+self.inc_conf_ords+self.inc_conf_spes)>0).to(torch.uint8)
         # self.excitations = ((self.inc_ords+self.inc_spes)>0).to(torch.int)
 
         self.compute_is_killed()
@@ -250,6 +271,7 @@ class VonNeumann(Automaton):
         
     def kill_dead(self):
         is_alive = (1-self.is_killed)
+        # Try to batch this operation
         self.ord_e = self.ord_e*is_alive
         self.ord_w = self.ord_w*is_alive
         self.ord_s = self.ord_s*is_alive

@@ -8,25 +8,26 @@ import cv2, torch, numpy as np
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 10
-W,H = 50,50
+el_size = 2
+W,H = 100,100
 
 font = pygame.font.SysFont(None, 25) 
+graph_folder = 'new_graph/'
 # Load the images for the automaton
-xm = pygame.transform.scale(pygame.image.load('graphics/xm.png'), (el_size, el_size))
-xp = pygame.transform.scale(pygame.image.load('graphics/xp.png'), (el_size, el_size))
-ym = pygame.transform.scale(pygame.image.load('graphics/ym.png'), (el_size, el_size))
-yp = pygame.transform.scale(pygame.image.load('graphics/yp.png'), (el_size, el_size))
+xm = pygame.transform.scale(pygame.image.load(graph_folder+'xm.png'), (el_size, el_size))
+xp = pygame.transform.scale(pygame.image.load(graph_folder+'xp.png'), (el_size, el_size))
+ym = pygame.transform.scale(pygame.image.load(graph_folder+'ym.png'), (el_size, el_size))
+yp = pygame.transform.scale(pygame.image.load(graph_folder+'yp.png'), (el_size, el_size))
 
-sxm = pygame.transform.scale(pygame.image.load('graphics/sxm.png'), (el_size, el_size))
-sxp = pygame.transform.scale(pygame.image.load('graphics/sxp.png'), (el_size, el_size))
-sym = pygame.transform.scale(pygame.image.load('graphics/sym.png'), (el_size, el_size))
-syp = pygame.transform.scale(pygame.image.load('graphics/syp.png'), (el_size, el_size))
+sxm = pygame.transform.scale(pygame.image.load(graph_folder+'sxm.png'), (el_size, el_size))
+sxp = pygame.transform.scale(pygame.image.load(graph_folder+'sxp.png'), (el_size, el_size))
+sym = pygame.transform.scale(pygame.image.load(graph_folder+'sym.png'), (el_size, el_size))
+syp = pygame.transform.scale(pygame.image.load(graph_folder+'syp.png'), (el_size, el_size))
 
-conf = pygame.transform.scale(pygame.image.load('graphics/conf.png'), (el_size, el_size))
-sens0 = pygame.transform.scale(pygame.image.load('graphics/sens0.png'), (el_size, el_size))
-excited = pygame.transform.scale(pygame.image.load('graphics/excited.png'), (el_size, el_size))
-excited_flip = pygame.transform.scale(pygame.image.load('graphics/excited_flip.png'), (el_size, el_size))
+conf = pygame.transform.scale(pygame.image.load(graph_folder+'conf0.png'), (el_size, el_size))
+sens0 = pygame.transform.scale(pygame.image.load(graph_folder+'sens0.png'), (el_size, el_size))
+excited = pygame.transform.scale(pygame.image.load(graph_folder+'excited.png'), (el_size, el_size))
+conf01 = pygame.transform.scale(pygame.image.load(graph_folder+'conf01.png'), (el_size, el_size))
 
 screen_W, screen_H = W*el_size, H*el_size
 
@@ -35,15 +36,15 @@ clock = pygame.time.Clock()
 running = True
 camera = Camera(screen_W,screen_H)
 
-fps = 1
+fps = 25
 
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
 # Initialize the automaton
-auto = VonNeumann((H,W))
+auto = VonNeumann((H,W),device='cuda')
 
-updating = True
+updating = False
 recording = False
 launch_video = False
 
@@ -82,9 +83,10 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
             elif(type==8):
                 surf.blit(sym, (i*el_size, j*el_size))
             elif(type==9):
-                surf.blit(conf, (i*el_size, j*el_size))
                 if(conf_out[i,j,0]>0):
-                    surf.blit(excited_flip, (i*el_size, j*el_size))
+                    surf.blit(conf01, (i*el_size, j*el_size))
+                else:
+                    surf.blit(conf, (i*el_size, j*el_size))
             elif(type==10):
                 surf.blit(sens0, (i*el_size, j*el_size))
 
@@ -97,6 +99,7 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
 
     return surf
 
+counter=0
 while running:
     for event in pygame.event.get():
         # Event loop. Here we deal with all the interactivity
@@ -113,7 +116,8 @@ while running:
     if(updating):
         # Step the automaton if we are updating
         auto.step()
-    auto.draw()
+    if(counter%100==0):
+        auto.draw()
     #Retrieve the world_state from automaton
     world_state, excited_state, conf_out = auto.worldmap
     surface= draw_game_state(world_state,excited_state,conf_out,el_size)
@@ -138,12 +142,12 @@ while running:
     screen.blit(zoomed_surface, (0, 0))
     clock.tick(fps)  # limits FPS
     curfps= clock.get_fps()
-    fps_text = font.render("FPS: " + str(int(curfps)), True, (255, 0, 0))  # Red color
+    fps_text = font.render("FPS: " + str(int(curfps)), True, (255,255,255),(0,0,0))  # Red color
 
     screen.blit(fps_text, (10, 10))  # Display at position (10, 10)
     # Update the screen
     pygame.display.flip()
-
+    counter+=1
 
 
 
