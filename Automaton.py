@@ -123,6 +123,9 @@ class VonNeumann(Automaton):
         self.sens_state = torch.where(self.is_sens,1,0 )
         self.births = torch.zeros_like(self.is_sens,dtype=torch.uint8)
 
+        # Killed :
+        self.is_killed = torch.zeros_like(state,dtype=torch.uint8)
+
         # Init self.inc_ords and self.inc_spes
         self.compute_ord_excitations()
         self.compute_spe_excitations()
@@ -135,19 +138,7 @@ class VonNeumann(Automaton):
     def inj_excitations(self):
         self.excitations = (torch.rand((1,*self.size), device=self.device)<0.5).to(dtype=torch.uint8)
 
-    def reset_state(self):
-        state = torch.randint(0,10,(1,*self.size), device=self.device)
-
-        mask = torch.zeros_like(state)
-        mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]=0
-        # mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]=torch.randint(6,8,(1,70,70), device=self.device)
-    
-        state[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35] = mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]
-        
-        # Excitations :
-        self.excitations = (torch.rand((1,*self.size), device=self.device)<0.5).to(dtype=torch.uint8)
-
-        # state=self.make_state_bench() # UNCOMMENT TO USE BENCHMARK 
+    def set_state(self,state):
         # Ordinary transmissions :
         self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
         self.ord_w = torch.where(state==2,1,0).to(torch.uint8)
@@ -172,6 +163,21 @@ class VonNeumann(Automaton):
         self.is_sens = torch.where(state==10,1,0).to(torch.uint8)
         self.sens_state = torch.where(self.is_sens,1,0 )
         self.births = torch.zeros_like(self.is_sens,dtype=torch.uint8)
+
+    def reset_state(self):
+        state = torch.randint(0,10,(1,*self.size), device=self.device)
+
+        mask = torch.zeros_like(state)
+        mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]=0
+        # mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]=torch.randint(6,8,(1,70,70), device=self.device)
+    
+        state[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35] = mask[:,self.h//2-35:self.h//2+35,self.w//2-35:self.w//2+35]
+        
+        # Excitations :
+        self.excitations = (torch.rand((1,*self.size), device=self.device)<0.5).to(dtype=torch.uint8)
+
+        # state=self.make_state_bench() # UNCOMMENT TO USE BENCHMARK 
+        self.set_state(state)
     
     def make_state_bench(self):
         """
@@ -180,11 +186,12 @@ class VonNeumann(Automaton):
         state= torch.zeros((1,*self.size), device=self.device, dtype=torch.int)
         self.excitations = torch.zeros((1,*self.size), device=self.device, dtype=torch.int)
 
-        bench_state, bench_excit = get_sens_benchmark()
+        bench_state, bench_excit = get_sens_benchmark(True)
         state[0,2:9+2,2:5+2] = bench_state.to(self.device)
         self.excitations[0,2:9+2,2:5+2] = bench_excit.to(self.device)
 
         return state
+    
     def compute_is_ord(self):
         self.is_ord = ((self.ord_e+self.ord_w+self.ord_s+self.ord_n)>0).to(torch.uint8)
     
@@ -215,7 +222,7 @@ class VonNeumann(Automaton):
 
         self.conf_out = self.conf_in*self.is_conf
         self.conf_in = (1-(self.inh))*self.inc_ords*self.is_conf
-
+        # esthetic
     def compute_sens(self):
         inc_exc = ((self.inc_ords+self.inc_spes)>0).to(torch.uint8)
         
@@ -301,6 +308,8 @@ class VonNeumann(Automaton):
 
 
         self.excitations = ((self.inc_ords+self.inc_spes+self.inc_conf_ords+self.inc_conf_spes)>0).to(torch.uint8)
+        self.excitations = torch.where((self.is_conf)*(1-self.conf_in)==1,0,self.excitations)# Remove spurious exictations on top of deactivated conf_in
+
         # self.excitations = ((self.inc_ords+self.inc_spes)>0).to(torch.int)
 
         self.compute_is_killed()

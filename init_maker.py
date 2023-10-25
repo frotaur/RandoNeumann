@@ -1,10 +1,15 @@
 import torch
 
-def ord_string_state(state_num):
+def ord_string_state(state_num, spe):
     """
         Given the state, returns a (5,) tensor for the arrows, and (5,) for the excitations
     """
-    arrows = torch.tensor([1,1,1,1,1])
+    if(spe):
+        addon = 4
+    else :
+        addon=0
+    arrows = torch.tensor([1+addon,1+addon,1+addon,1+addon,1+addon])
+    
     if(state_num==1):
         return arrows,torch.tensor([0,0,0,0,1])
     elif(state_num==2):
@@ -24,7 +29,7 @@ def ord_string_state(state_num):
     elif(state_num==9):
         return arrows,torch.tensor([0,1,1,1,1])
 
-def get_sens_benchmark():
+def get_sens_benchmark(spe=False):
     """
         Return a portion of state which is the benchmark for the sensitive cells,
         it is of size (5,9)*2 (arrows, excitations)
@@ -32,6 +37,6 @@ def get_sens_benchmark():
     out_state = torch.zeros((9,5))
     out_excit = torch.zeros((9,5))
     for i in range(1,10):
-        out_state[i-1,:],out_excit[i-1,:] = ord_string_state(i)
+        out_state[i-1,:],out_excit[i-1,:] = ord_string_state(i,spe)
     
     return out_state,out_excit

@@ -2,16 +2,18 @@ import pygame
 from Camera import Camera
 from Automaton import *
 import cv2, torch, numpy as np, os
+from torchenhanced.util import showTens
 # TODO : Migrate all this into a big class. That way the helper methods are easier to write.
 
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 9
-W,H = 100,100
+el_size = 8
+W,H = 220,90
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
+
 # Load the images for the automaton
 xm = pygame.transform.scale(pygame.image.load(graph_folder+'xm.png'), (el_size, el_size))
 xp = pygame.transform.scale(pygame.image.load(graph_folder+'xp.png'), (el_size, el_size))
@@ -36,13 +38,22 @@ running = True
 camera = Camera(screen_W,screen_H)
 
 
-fps = 15
+fps = 60
 
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
+device='cpu'
 # Initialize the automaton
-auto = VonNeumann((H,W),device='cpu')
+auto = VonNeumann((H,W),device=device)
+
+#Uncomment for replicator
+state = torch.zeros_like(auto.births)
+state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
+state[:,70:75,5+34] =4
+auto.set_state(state)
+auto.excitations = torch.zeros_like(auto.excitations)
+auto.excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
 
 updating = False
 recording = False
@@ -100,6 +111,8 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
     return surf
 
 counter=0
+erasing = False
+state = 0
 while running:
     for event in pygame.event.get():
         # Event loop. Here we deal with all the interactivity
@@ -114,6 +127,30 @@ while running:
                 auto.reset_state()
             if(event.key == pygame.K_e):
                 auto.inj_excitations()
+            if(event.key == pygame.K_k):
+                auto.is_killed = torch.ones_like(auto.is_killed)
+                auto.kill_dead()
+            if(event.key == pygame.K_LEFT):
+                auto.step()
+            if(event.key == pygame.K_BACKSPACE):
+                erasing=not erasing
+            if event.key in [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
+                state = int(event.unicode)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+        # Check if the left mouse button was clicked
+            x, y = event.pos
+            x = x//el_size
+            y = y//el_size
+            if event.button == 3:
+                if(not erasing):
+                    auto.excitations[:,y,x] = 1-auto.excitations[:,y,x]
+                else:
+                    auto.is_killed[:,max(y-5,0):min(y+5,H),max(x-5,0):min(x+5,W)] = 1
+                    auto.kill_dead()
+            if event.button == 1:
+                auto.births[:,y,x] = state
+                auto.make_births()
+
         # Handle the event loop for the camera (disabled for now)
         camera.handle_event(event)
     
@@ -140,12 +177,13 @@ while running:
         frame_str = pygame.image.tostring(surface, "RGB")
 
         # Convert this string buffer to a numpy array
-        frame_np = np.frombuffer(frame_str, dtype=np.uint8).reshape(screen_W, screen_H, 3)
+        frame_np = np.frombuffer(frame_str, dtype=np.uint8).reshape((screen_H,screen_W,3))
+
 
         frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
 
-        video_out.write(frame_bgr)
 
+        video_out.write(frame_bgr)
         pygame.draw.circle(surface, (255,0,0), (screen_W-10,screen_H-10),2)
     
     # Clear the screen
@@ -158,7 +196,7 @@ while running:
     curfps= clock.get_fps()
     fps_text = font.render("FPS: " + str(int(curfps)), True, (255,255,255),(0,0,0))  # Red color
 
-    screen.blit(fps_text, (10, 10))  # Display at position (10, 10)
+    # screen.blit(fps_text, (10, 10))  # Display at position (10, 10)
     # Update the screen
     pygame.display.flip()
     counter+=1
