@@ -97,21 +97,28 @@ class VonNeumann(Automaton):
         # Excitations :
         self.excitations = (torch.rand((1,*size), device=device)<0.5).to(dtype=torch.uint8)
 
-        # state=self.make_state_bench() # UNCOMMENT TO USE BENCHMARK 
+        state=self.make_state_bench() # UNCOMMENT TO USE BENCHMARK 
+        self.set_state(state)
+
+
+
+        self._worldmap = torch.zeros((1,self.h,self.w), device=device, dtype=torch.int)
+
+    def inj_excitations(self):
+        self.excitations = (torch.rand((1,*self.size), device=self.device)<0.5).to(dtype=torch.uint8)
+
+    def set_state(self,state):
         # Ordinary transmissions :
         self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
         self.ord_w = torch.where(state==2,1,0).to(torch.uint8)
         self.ord_s = torch.where(state==3,1,0).to(torch.uint8)
         self.ord_n = torch.where(state==4,1,0).to(torch.uint8)
-        self.compute_is_ord()
         
         # Special transmission :
         self.spe_e = torch.where(state==5,1,0).to(torch.uint8)
         self.spe_w = torch.where(state==6,1,0).to(torch.uint8)
         self.spe_s = torch.where(state==7,1,0).to(torch.uint8)
         self.spe_n = torch.where(state==8,1,0).to(torch.uint8)
-        self.compute_is_spe()
-
 
         # Confluent :
         self.is_conf = torch.where(state==9,1,0).to(torch.uint8)
@@ -127,43 +134,12 @@ class VonNeumann(Automaton):
         self.is_killed = torch.zeros_like(state,dtype=torch.uint8)
 
         # Init self.inc_ords and self.inc_spes
+        self.compute_is_ord()
+        self.compute_is_spe()
         self.compute_ord_excitations()
         self.compute_spe_excitations()
-        self.compute_is_ord()
-        self.compute_is_spe()
         self.compute_is_ground()
-
-        self._worldmap = torch.zeros((1,self.h,self.w), device=device, dtype=torch.int)
-
-    def inj_excitations(self):
-        self.excitations = (torch.rand((1,*self.size), device=self.device)<0.5).to(dtype=torch.uint8)
-
-    def set_state(self,state):
-        # Ordinary transmissions :
-        self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
-        self.ord_w = torch.where(state==2,1,0).to(torch.uint8)
-        self.ord_s = torch.where(state==3,1,0).to(torch.uint8)
-        self.ord_n = torch.where(state==4,1,0).to(torch.uint8)
-        self.compute_is_ord()
-        
-        # Special transmission :
-        self.spe_e = torch.where(state==5,1,0).to(torch.uint8)
-        self.spe_w = torch.where(state==6,1,0).to(torch.uint8)
-        self.spe_s = torch.where(state==7,1,0).to(torch.uint8)
-        self.spe_n = torch.where(state==8,1,0).to(torch.uint8)
-        self.compute_is_spe()
-
-
-        # Confluent :
-        self.is_conf = torch.where(state==9,1,0).to(torch.uint8)
-        self.conf_in = torch.zeros_like(self.is_conf)
-        self.conf_out = torch.zeros_like(self.is_conf)
-
-        # Sensitized :
-        self.is_sens = torch.where(state==10,1,0).to(torch.uint8)
-        self.sens_state = torch.where(self.is_sens,1,0 )
-        self.births = torch.zeros_like(self.is_sens,dtype=torch.uint8)
-
+    
     def reset_state(self):
         state = torch.randint(0,10,(1,*self.size), device=self.device)
 

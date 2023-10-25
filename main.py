@@ -48,12 +48,12 @@ device='cpu'
 auto = VonNeumann((H,W),device=device)
 
 #Uncomment for replicator
-state = torch.zeros_like(auto.births)
-state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
-state[:,70:75,5+34] =4
-auto.set_state(state)
-auto.excitations = torch.zeros_like(auto.excitations)
-auto.excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
+# state = torch.zeros_like(auto.births)
+# state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
+# state[:,70:75,5+34] =4
+# auto.set_state(state)
+# auto.excitations = torch.zeros_like(auto.excitations)
+# auto.excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
 
 updating = False
 recording = False
@@ -119,6 +119,8 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
+            if(event.key == pygame.K_ESCAPE):
+                running = False
             if(event.key == pygame.K_SPACE):
                 updating=not updating
             if(event.key == pygame.K_r):
