@@ -9,7 +9,7 @@ from torchenhanced.util import showTens
 # Initialize the pygame screen 
 pygame.init()
 el_size = 8
-W,H = 220,90
+W,H = 200,100
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
