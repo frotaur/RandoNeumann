@@ -35,7 +35,8 @@ class Automaton(DevModule) :
 
         # <<<FOR GPU AND EASY DEVICE SWITCHING, SWITCH THIS TO REGISTER_BUFFER>>>
         self._worldmap = torch.rand((3,self.h,self.w), device=device)
-    
+
+        self.to(device)
 
     def step(self):
         return NotImplementedError('Please subclass "Automaton" class, and define self.step')
@@ -106,6 +107,8 @@ class VonNeumann(Automaton):
         self.run_mcmc(100, 3, replace_prob=.2)
         self._worldmap = torch.zeros((1,self.h,self.w), device=device, dtype=torch.int)
 
+        self.to(device)
+
     def inj_excitations(self):
         self.excitations = (torch.rand((1,*self.size), device=self.device)<0.2).to(dtype=torch.uint8)
 
@@ -120,9 +123,9 @@ class VonNeumann(Automaton):
         p_confluent /= p_total
         p_dead /= p_total
 
-        state = torch.zeros((1,*self.size))
+        state = torch.zeros((1,*self.size)).to(self.device)
         # Excitations :
-        uniform = torch.rand(state.shape)
+        uniform = torch.rand(state.shape).to(self.device)
 
         ordinary_locs = uniform < p_ordinary
         special_locs = (p_ordinary < uniform) & (uniform < p_ordinary + p_special)
@@ -133,13 +136,14 @@ class VonNeumann(Automaton):
         state += torch.where(special_locs, transmission_dirs + 5, 0)
         state += torch.where(confluent_locs, 9, 0)
 
-        return state.to(self.device)
+        return state
 
     def set_state(self, state):
         """
         	Fills all the tensor for each species given by the state, which should be a tensor of
             shape (1,H,W), with values between 0 and 9.
         """
+        state = state.to(self.device)
         # Ordinary transmissions :
         self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
         self.ord_w = torch.where(state==2,1,0).to(torch.uint8)
@@ -439,7 +443,7 @@ class VonNeumann(Automaton):
         cur_energy_density = self.compute_energy_density()
 
         rand_state = self.get_rando_para_state(self.p_ordinary, self.p_special, self.p_confluent)        
-        proposed_state = torch.where(torch.rand(cur_state.shape)<replace_prob,rand_state,cur_state)
+        proposed_state = torch.where(torch.rand(cur_state.shape,device=self.device)<replace_prob,rand_state,cur_state)
 
         self.set_state(proposed_state)
         new_energy_density = self.compute_energy_density()

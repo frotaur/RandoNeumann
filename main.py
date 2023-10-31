@@ -9,7 +9,7 @@ from torchenhanced.util import showTens
 # Initialize the pygame screen 
 pygame.init()
 el_size = 8
-W,H = 200,100
+W,H = 100,100
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
@@ -46,7 +46,9 @@ world_state = np.zeros((W,H,3),dtype=np.uint8)
 device='cpu'
 # Initialize the automaton
 auto = VonNeumann((H,W),device=device)
-
+state_opti = torch.load('best_state.pt',map_location=device)
+auto.set_state(state_opti)
+auto.excitations = torch.load('initial_excitation.pt',map_location=device)
 #Uncomment for replicator
 # state = torch.zeros_like(auto.births)
 # state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]

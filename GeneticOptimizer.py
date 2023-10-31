@@ -3,7 +3,7 @@ from torchenhanced.util import showTens
 import statistics, random, torch
 from tqdm import tqdm
 import numpy as np
-
+import time
 
 
 class GeneticOptimizer:
@@ -29,22 +29,24 @@ class GeneticOptimizer:
         self.size = size
         self.square_size = square_size
 
-        self.initial_excitation = (torch.rand(self.automaton.excitations.shape)<0.5).to(dtype=torch.uint8)
-
+        self.initial_excitation = (torch.rand(self.automaton.excitations.shape)<0.5).to(dtype=torch.uint8).to(self.automaton.device)
+        torch.save(self.initial_excitation,'initial_excitation.pt')
         self.states=[]
         for _ in tqdm(range(population_size)):
             self.states.append(self.get_random_state())
         self.states = [self.get_random_state() for _ in range(population_size)]
 
+        self.device = device
+    
 
     def get_random_state(self):
         self.automaton.set_state(self.automaton.get_rando_para_state(0.3,0.3,0.3))
-        self.automaton.run_mcmc(10,2,replace_prob=0.1)
+        # self.automaton.run_mcmc(1,2,replace_prob=0.1)
         H,W = self.size
         h,w = self.square_size
 
-        x = torch.linspace(0, W-1, W)
-        y = torch.linspace(0, H-1, H)
+        x = torch.linspace(0, W-1, W,device=self.automaton.device)
+        y = torch.linspace(0, H-1, H,device=self.automaton.device)
         xx, yy = torch.meshgrid(x, y)
 
         # Calculate the top-left and bottom-right coordinates of the centered square
@@ -59,14 +61,15 @@ class GeneticOptimizer:
         return self.automaton.get_state()*mask[None,:,:]
     
     def fitness_num_states_0(self,state):
+
         self.automaton.set_state(state)
         self.automaton.excitations = self.initial_excitation.clone()
+
 
         for _ in range(self.simulation_steps):
             self.automaton.step()
         
         self.automaton.compute_is_ground()
-
         # showTens(self.automaton.is_ground)
 
         return (1-self.automaton.is_ground).to(dtype=torch.float32).mean().item()
@@ -76,9 +79,14 @@ class GeneticOptimizer:
             Generates a child from two parents.
             The child is a random mix of the two parents.
         """
-        child_state = torch.where(torch.linspace(0,1,self.size[0])[None,None,:]<0.5,parent1,parent2)
-
-        return child_state
+        if(torch.rand(1,device=self.device)<0.5):
+            # 50% chance of reproduction
+            child_state = torch.where(torch.linspace(0,1,self.size[0],device=self.device)[None,None,:]<0.5,parent1,parent2)
+            # 3% mutations
+            child_state = torch.where(torch.rand(self.size,device=self.device)<0.03,self.get_random_state(),child_state)
+            return child_state
+        else:
+            return parent1
 
     def draw_state(self, state):
         self.automaton.set_state(state)
@@ -88,22 +96,28 @@ class GeneticOptimizer:
     
     def evolve(self,num_generations):
         for k in range(num_generations):
-            fitnesses = [self.fitness_num_states_0(state) for state in self.states]
+            t1 = time.time()
+            fitnesses = []
+            for state in tqdm(self.states):
+                fitnesses.append(self.fitness_num_states_0(state))
+        
+            print(f'fitness : {time.time()-t1}s')
             thresh_fitness = np.percentile(fitnesses,75)
             mean_fitness = statistics.mean(fitnesses)
             max_index = fitnesses.index(max(fitnesses))
 
             if k+1==num_generations:
                 self.draw_state(self.states[max_index])
-            
-            print(f'Gen {k} : {thresh_fitness:}, {mean_fitness:}''Mean fitness: ',mean_fitness,' Median fitness: ',thresh_fitness)
+            torch.save(self.states[max_index],'best_state.pt')
 
+            print(f'Gen {k} : {thresh_fitness:}, {mean_fitness:}''Mean fitness: ',mean_fitness,' Median fitness: ',thresh_fitness)
+            t1 = time.time()
             surviving_states = [state for (state, fitness) in zip(self.states, fitnesses) if fitness >= thresh_fitness]
-            surviving_states.extend([self.get_random_state() for _ in range(self.population_size//10)])
-            next_states = [self.generate_child(random.choice(surviving_states),random.choice(surviving_states)) for _ in range(self.population_size)]
+            next_states =[self.generate_child(random.choice(surviving_states),random.choice(surviving_states)) for _ in range(self.population_size)]
             self.states = next_states
+            print(f'evolve : {time.time()-t1}s')
 
 if __name__=='__main__':
-    geno = GeneticOptimizer((100,100),(30,30),40,30,0.5,0.5,device='cpu')
+    geno = GeneticOptimizer((100,100),(30,30),40,150,0.5,0.5,device='cpu')
 
-    geno.evolve(300)
+    geno.evolve(100)
