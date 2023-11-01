@@ -78,11 +78,11 @@ class GeneticOptimizer:
             self.automaton.step()
             excitation_table.append(self.automaton.excitations.clone())
 
-        excitation_tensor = torch.stack(excitation_table,dim=0) # (eval_period,H,W)
-        score_tensor = torch.zeros_like(excitation_tensor) # (eval_period,H,W)
+        excitation_tensor = torch.stack(excitation_table,dim=0).to(torch.float32) # (eval_period,1,H,W)
+        score_tensor = torch.zeros_like(excitation_tensor) # (eval_period,1,H,W)
         for i in range(1, eval_period - 1):
-            max_before = excitation_tensor[:i, :, :].max(dim=0)[0]
-            max_after = excitation_tensor[i:, :, :].max(dim=0)[0]
+            max_before = excitation_tensor[:i].max(dim=0)[0]
+            max_after = excitation_tensor[i:].max(dim=0)[0]
             score_tensor += (max_after - max_before).clamp(min=0)
 
         return score_tensor.mean().item()
@@ -99,6 +99,20 @@ class GeneticOptimizer:
         # self.automaton.compute_is_ground()
 
         return (self.automaton.is_conf).to(dtype=torch.float32).mean().item()
+
+    def fitness_diversity(self,state):
+        self.automaton.set_state(state)
+        self.automaton.excitations = self.initial_excitation.clone()
+
+
+        for _ in range(self.simulation_steps):
+            self.automaton.step()
+
+        ords = torch.stack([self.automaton.ord_e,self.automaton.ord_w,self.automaton.ord_s,self.automaton.ord_n]).to(dtype=torch.float32).mean(dim=(1,2,3))
+        spes = torch.stack([self.automaton.spe_e,self.automaton.spe_w,self.automaton.spe_s,self.automaton.spe_n]).to(dtype=torch.float32).mean(dim=(1,2,3))
+        confs = self.automaton.is_conf.to(dtype=torch.float32).mean()
+
+        return (9.**9.)*(ords.prod()*spes.prod()*confs).item()
 
     def repro_mask(self, num_centers=8, r=None):
         """
@@ -149,7 +163,7 @@ class GeneticOptimizer:
             t1 = time.time()
             fitnesses = []
             for state in tqdm(self.states):
-                fitnesses.append(self.fitness_num_states_0(state))
+                fitnesses.append(self.fitness_diversity(state))
         
             sorted_indices = np.argsort(fitnesses)[::-1]
 
