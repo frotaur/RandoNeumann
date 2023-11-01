@@ -3,7 +3,7 @@ from torchenhanced.util import showTens
 import statistics, random, torch
 from tqdm import tqdm
 import numpy as np
-import time
+import time, itertools
 
 
 class GeneticOptimizer:
@@ -30,17 +30,42 @@ class GeneticOptimizer:
         self.square_mask = self.get_square_mask()
 
         self.initial_excitation = (torch.rand(self.automaton.excitations.shape)<0.5).to(dtype=torch.uint8).to(self.automaton.device)
+        self.excitation_square = self.initial_excitation[:,:self.square_size[0],:self.square_size[1]]
+
         torch.save(self.initial_excitation,'initial_excitation.pt')
+        torch.save(self.excitation_square,'excitation_square.pt')
+
         self.states=[]
         for _ in tqdm(range(population_size)):
-            self.states.append(self.get_random_state())
-        self.states = [self.get_random_state() for _ in range(population_size)]
+            self.states.append(self.get_random_square_state())
+        self.states = [self.get_random_square_state() for _ in range(population_size)]
 
+        self.red_states = [self.get_random_square(self.square_size) for _ in range(population_size)]
+        self.blue_states = [self.get_random_square(self.square_size) for _ in range(population_size)]
         self.mutation_rate = mutation_rate
 
         self.device = device
     
 
+    def inject_square(self,state,square,position):
+        """
+            Injects a square in the state at the given position.
+            Clips if it goes out of bounds.
+
+            Args:
+                state : (1,H,W) tensor of ints
+                square : (1,h,w) tensor of ints
+                position : (2,) tensor of ints
+        """
+        h, w = square.shape[1:]
+        x, y = position
+
+        finalx = min(x + w,state.shape[1]-1)
+        finaly = min(y + h,state.shape[2]-1)
+        state[:, x:finalx, y:finaly] = square[:, :finalx - x, :finaly - y]
+
+        return state
+    
     def get_square_mask(self):
         H,W = self.size
         h,w = self.square_size
@@ -60,12 +85,15 @@ class GeneticOptimizer:
 
         return mask
     
-    def get_random_state(self):
+    def get_random_square_state(self):
         self.automaton.set_state(self.automaton.get_rando_para_state(0.3,0.3,0.3))
         # self.automaton.run_mcmc(1,2,replace_prob=0.1)
 
         return self.automaton.get_state()*self.square_mask[None,:,:]
     
+    def get_random_square(self,square_size):
+        return self.automaton.get_rando_para_state(0.3,0.3,0.3)[:,:square_size[0],:square_size[1]]
+
     def fitness_mover(self,state):
         eval_period = 20
 
@@ -144,10 +172,23 @@ class GeneticOptimizer:
         child_state = torch.where(torch.full(parent1.shape,True),parent1,parent2)
         
         # Mutations
-        child_state = torch.where(torch.rand(self.size,device=self.device)<self.mutation_rate,self.get_random_state(),child_state)
+        child_state = torch.where(torch.rand(self.size,device=self.device)<self.mutation_rate,self.get_random_square_state(),child_state)
        
         return child_state
+    
+    def generate_square_child(self,parent1,parent2):
+            """
+                Generates a child from two parents.
+                The child is a random mix of the two parents.
+            """
 
+            # reproduction by crossover
+            child_state = torch.where(torch.full(parent1.shape,True),parent1,parent2)
+            
+            # Mutations
+            child_state = torch.where(torch.rand(parent1.shape,device=self.device)<self.mutation_rate,self.get_random_square(parent1.shape),child_state)
+        
+            return child_state
 
     def draw_state(self, state):
         self.automaton.set_state(state)
@@ -184,7 +225,80 @@ class GeneticOptimizer:
             self.states = surviving_states+next_child_states
             assert len(self.states)==self.population_size
 
-if __name__=='__main__':
-    geno = GeneticOptimizer((100,100),(30,30),40,150,0.03,device='cpu')
+    def tournament(self,red_square,blue_square):
+        H,W = self.size
+        state = torch.zeros((1,H,W),device=self.device)
+        excitations = torch.zeros_like(state)
 
-    geno.evolve(100)
+        state = self.inject_square(state,red_square,(H//4,W//4))
+        state = self.inject_square(state,blue_square,(3*H//4,3*W//4))
+
+        excitations = self.inject_square(excitations,self.excitation_square,(H//4,W//4))
+        excitations = self.inject_square(excitations,self.excitation_square,(3*H//4,3*W//4))
+
+        # print('init state')
+        # showTens(state)
+        # print('init exci')
+        # showTens(excitations)
+
+        self.automaton.set_state(state)
+        self.automaton.excitations = excitations
+
+        for _ in range(self.simulation_steps):
+            self.automaton.step()
+        
+        return self.automaton.is_spe.to(torch.float).mean().item()-self.automaton.is_ord.to(torch.float).mean().item()
+
+    def tournament_evolve(self, num_generations):
+        num_survive = int(self.population_size*0.1)
+        num_reprod = int(self.population_size*0.2)
+        num_children = self.population_size-num_survive
+
+        for k in range(num_generations):
+            red_fitnesses = [0.]*self.population_size
+            blue_fitnesses = [0.]*self.population_size
+
+            for (r_ind,red),(b_ind,blue) in tqdm(itertools.product(enumerate(self.red_states),enumerate(self.blue_states))):
+                match_result = self.tournament(red,blue)
+                red_fitnesses[r_ind]+=match_result
+                blue_fitnesses[b_ind]-=match_result
+
+            red_sorted_indices = np.argsort(red_fitnesses)[::-1]
+            blue_sorted_indices = np.argsort(blue_fitnesses)[::-1]
+
+            mean_red = statistics.mean(red_fitnesses)
+            mean_blue = statistics.mean(blue_fitnesses)
+
+            max_red = red_fitnesses.index(max(red_fitnesses))
+            max_blue = blue_fitnesses.index(max(blue_fitnesses))
+
+
+            print(f'Gen {k} : {mean_red=}, {mean_blue=}')
+
+            surviving_red = [self.red_states[k] for k in red_sorted_indices[:num_survive]]
+            reproducing_red = [self.red_states[k] for k in red_sorted_indices[:num_reprod]]
+            
+            surviving_blue = [self.blue_states[k] for k in blue_sorted_indices[:num_survive]]
+            reproducing_blue = [self.blue_states[k] for k in blue_sorted_indices[:num_reprod]]
+
+            next_child_red =[self.generate_square_child(random.choice(reproducing_red),random.choice(reproducing_red)) for _ in range(num_children)]
+            next_child_blue =[self.generate_square_child(random.choice(reproducing_blue),random.choice(reproducing_blue)) for _ in range(num_children)]
+
+            self.red_states = surviving_red+next_child_red
+            self.blue_states = surviving_blue+next_child_blue
+
+            fight_state = torch.zeros((1,self.size[0],self.size[1]),device=self.device)
+            fight_state = self.inject_square(fight_state,self.red_states[max_red],(self.size[0]//4,self.size[1]//4))
+            fight_state = self.inject_square(fight_state,self.blue_states[max_blue],(3*self.size[0]//4,3*self.size[1]//4))
+            
+            excitations = torch.zeros_like(fight_state)
+            excitations = self.inject_square(excitations,self.excitation_square,(self.size[0]//4,self.size[1]//4))
+            excitations = self.inject_square(excitations,self.excitation_square,(3*self.size[0]//4,3*self.size[1]//4))
+
+            torch.save(fight_state,'fight_state.pt')
+            torch.save(excitations,'fight_exci.pt')
+
+if __name__=='__main__':
+    geno = GeneticOptimizer((100,100),(20,20),6,150,0.03,device='cpu')
+
+    geno.tournament_evolve(10)
