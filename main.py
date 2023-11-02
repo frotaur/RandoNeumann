@@ -8,8 +8,8 @@ from torchenhanced.util import showTens
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 8
-W,H = 100,100
+el_size = 10
+W,H = 128,128
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
@@ -47,8 +47,10 @@ device='cpu'
 # Initialize the automaton
 auto = VonNeumann((H,W),device=device)
 state_opti = torch.load('best_state.pt',map_location=device)
-auto.set_state(state_opti)
-auto.excitations = torch.load('initial_excitation.pt',map_location=device)
+excitations = torch.load('initial_excitation.pt',map_location=device)
+
+auto.set_state(state_opti[None],excitations=excitations)
+# auto.excitations = excitations.expand_as(auto.excitations)
 #Uncomment for replicator
 # state = torch.zeros_like(auto.births)
 # state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
@@ -134,7 +136,7 @@ while running:
             if(event.key == pygame.K_k):
                 auto.is_killed = torch.ones_like(auto.is_killed)
                 auto.kill_dead()
-            if(event.key == pygame.K_LEFT):
+            if(event.key == pygame.K_RIGHT):
                 auto.step()
             if(event.key == pygame.K_BACKSPACE):
                 erasing=not erasing

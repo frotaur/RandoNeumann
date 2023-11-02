@@ -112,10 +112,27 @@ class VonNeumann(Automaton):
     def inj_excitations(self):
         self.excitations = (torch.rand((1,*self.size), device=self.device)<0.2).to(dtype=torch.uint8)
 
-    def get_rando_para_state(self, p_ordinary, p_special, p_confluent, p_dead=0.):
+    def get_rando_para_state(self, p_ordinary=None, p_special=None, p_confluent=None, p_dead=0.,
+                             state_size=None, batch_size=1):
         """
-            Returns a random state with probabilities given as parameters.
+            Returns a random batch of states with probabilities given as parameters.
+
+            Parameters :
+            p_ordinary : Probability of ordinary transmission, if None, uses self
+            p_special : Probability of special transmission, if None, uses self
+            p_confluent : Probability of confluent, if None, uses self
+            p_dead : Probability of dead cell
+            state_size : size of the state. If None, uses self.size
+            batch_size : Number of states to generate
+
+            Return :
+            state : (B,H,W) tensor of uint8
         """
+        p_ordinary = self.p_ordinary if p_ordinary is None else p_ordinary
+        p_special = self.p_special if p_special is None else p_special
+        p_confluent = self.p_confluent if p_confluent is None else p_confluent
+        state_size = self.size if state_size is None else state_size
+
         p_total = p_ordinary+p_special+p_confluent+p_dead
 
         p_ordinary /= p_total
@@ -123,8 +140,9 @@ class VonNeumann(Automaton):
         p_confluent /= p_total
         p_dead /= p_total
 
-        state = torch.zeros((1,*self.size)).to(self.device)
-        # Excitations :
+        state = torch.zeros((batch_size,*state_size)).to(self.device)
+
+        # States random :
         uniform = torch.rand(state.shape).to(self.device)
 
         ordinary_locs = uniform < p_ordinary
@@ -138,11 +156,23 @@ class VonNeumann(Automaton):
 
         return state
 
-    def set_state(self, state):
+    def set_state(self, state, excitations = None):
         """
         	Fills all the tensor for each species given by the state, which should be a tensor of
-            shape (1,H,W), with values between 0 and 9.
+            shape (1,H,W), with values between 0 and 9. If provided, sets excitations to the given
+            (1,H,W) tensor of boolean/int(0,1) values. Otherwise, 0 excitations are set.
+            TODO : provide option for random excitations.
+
+            Args :
+            state : (B,H,W) tensor of uint8
+            excitations : (B,H,W) tensor of uint8 or booleans
         """
+        if(excitations is None):
+            excitations = torch.zeros_like(state, dtype=torch.uint8).to(self.device)
+        else :
+            excitations = (excitations>0).to(self.device, dtype=torch.uint8)
+        assert state.shape == excitations.shape, "State and excitations should have the same shape"
+
         state = state.to(self.device)
         # Ordinary transmissions :
         self.ord_e = torch.where(state==1,1,0).to(torch.uint8)
@@ -175,7 +205,11 @@ class VonNeumann(Automaton):
         self.compute_ord_excitations()
         self.compute_spe_excitations()
         self.compute_is_ground()
-    
+        
+        self.excitations = excitations.to(self.device)
+
+
+
     def get_state(self):
         """
             Returns a tensor of shape (1,H,W), with values between 0 and 9.
