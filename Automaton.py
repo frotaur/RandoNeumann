@@ -108,7 +108,7 @@ class VonNeumann(Automaton):
         self._worldmap = torch.zeros((1,self.h,self.w), device=device, dtype=torch.int)
 
         self.to(device)
-
+        self.p_ind = (0, 53, 70)
     def inj_excitations(self):
         self.excitations = (torch.rand((1,*self.size), device=self.device)<0.2).to(dtype=torch.uint8)
 
@@ -202,8 +202,8 @@ class VonNeumann(Automaton):
         # Init self.inc_ords and self.inc_spes
         self.compute_is_ord()
         self.compute_is_spe()
-        self.compute_ord_excitations()
-        self.compute_spe_excitations()
+        # self.compute_ord_excitations()
+        # self.compute_spe_excitations()
         self.compute_is_ground()
         
         self.excitations = excitations.to(self.device)
@@ -271,6 +271,7 @@ class VonNeumann(Automaton):
     def compute_is_spe(self):
         self.is_spe = ((self.spe_e+self.spe_w+self.spe_s+self.spe_n)>0).to(torch.uint8)
     
+
     def compute_is_killed(self):
         self.compute_is_ord()
         self.compute_is_spe()
@@ -289,17 +290,18 @@ class VonNeumann(Automaton):
         inc_conf_w = torch.roll(conf_act,shifts=+1,dims=2)
         inc_conf_s = torch.roll(conf_act,shifts=-1,dims=1)
         inc_conf_n = torch.roll(conf_act,shifts=+1,dims=1)
-
+        
+        # This looses an excitation on top of a confluent if put manually, but it's acceptable
         self.inc_conf_ords = self.is_ord*(inc_conf_e*(1-self.ord_e)+inc_conf_w*(1-self.ord_w)+inc_conf_s*(1-self.ord_s)+inc_conf_n*(1-self.ord_n))
         self.inc_conf_spes = self.is_spe*(inc_conf_e*(1-self.spe_e)+inc_conf_w*(1-self.spe_w)+inc_conf_s*(1-self.spe_s)+inc_conf_n*(1-self.spe_n))
 
         self.conf_out = self.conf_in*self.is_conf
-        self.conf_in = (1-(self.inh))*self.inc_ords*self.is_conf
-        # esthetic
+        self.conf_in = (1-self.inh)*self.inc_ords*self.is_conf
+
     
     def compute_sens(self):
         inc_exc = ((self.inc_ords+self.inc_spes)>0).to(torch.uint8)
-        
+
         self.is_sens = torch.where((self.is_ground)*inc_exc,1,self.is_sens)
 
         self.sens_state = ((self.sens_state << 1)+inc_exc)*self.is_sens
@@ -340,6 +342,9 @@ class VonNeumann(Automaton):
         self.is_conf = torch.where(self.births==9,1,self.is_conf)
 
         self.births = torch.zeros_like(self.births)
+        # Recompute which the 'is' thingies
+        self.compute_is_ord()
+        self.compute_is_spe()
 
     def compute_ord_excitations(self):
         # This cannot be batched I think
@@ -371,6 +376,48 @@ class VonNeumann(Automaton):
 
         self.inc_spes = inc_spe_e*(1-self.spe_e)+inc_spe_w*(1-self.spe_w)+inc_spe_s*(1-self.spe_s)+inc_spe_n*(1-self.spe_n)
     
+    def check_log_step(self):
+        print('============================================================')
+        print('============================================================')
+        print('----------------------- STEP -----------------------')
+        print('============================================================')
+        print('============================================================')
+        self.check_no_problem()
+
+        self.compute_ord_excitations()
+        self.compute_spe_excitations()
+        print('----------------------- compute ord and spe excitations -----------------------')
+        self.check_no_problem()
+
+        self.compute_conf()
+        print('----------------------- compute conf -----------------------')
+        self.check_no_problem()
+        self.compute_sens()
+        print('----------------------- compute sens -----------------------')
+        self.check_no_problem()
+
+        self.excitations = ((self.inc_ords+self.inc_spes+self.inc_conf_ords+self.inc_conf_spes)>0).to(torch.uint8)
+        self.excitations = torch.where((self.is_conf)*(1-self.conf_in)==1,0,self.excitations)# Remove spurious exictations on top of deactivated conf_in
+
+        # self.excitations = ((self.inc_ords+self.inc_spes)>0).to(torch.int)
+        print('----------------------- compute excitations -----------------------')
+        self.check_no_problem()
+
+        self.compute_is_killed()
+        print('----------------------- compute is killed -----------------------')
+        self.check_no_problem()
+        self.kill_dead()
+        print('----------------------- kill dead -----------------------')
+        self.check_no_problem()
+
+        self.make_births()
+        print('----------------------- make births -----------------------')
+        self.check_no_problem()
+
+        self.compute_is_ground()
+        print('compute is ground -----------------------')
+        self.check_no_problem()
+    
     def step(self):
         self.compute_ord_excitations()
         self.compute_spe_excitations()
@@ -381,15 +428,31 @@ class VonNeumann(Automaton):
         self.excitations = ((self.inc_ords+self.inc_spes+self.inc_conf_ords+self.inc_conf_spes)>0).to(torch.uint8)
         self.excitations = torch.where((self.is_conf)*(1-self.conf_in)==1,0,self.excitations)# Remove spurious exictations on top of deactivated conf_in
 
-        # self.excitations = ((self.inc_ords+self.inc_spes)>0).to(torch.int)
-
         self.compute_is_killed()
         self.kill_dead()
-        
         self.make_births()
-        self.compute_is_ground()
 
-        
+        self.compute_is_ground()
+        self.check_no_problem()
+    # def _check_pind(self):
+    #     print('ord_e : ',self.ord_e[self.p_ind].item(),end=' ')
+    #     print('ord_w :',self.ord_w[self.p_ind].item(),end=' ')
+    #     print('ord_s :',self.ord_s[self.p_ind].item(),end=' ')
+    #     print('ord_n :',self.ord_n[self.p_ind].item(),end=' ')
+
+    #     print('spe_e :',self.spe_e[self.p_ind].item(),end=' ')
+    #     print('spe_w :',self.spe_w[self.p_ind].item(),end=' ')
+    #     print('spe_s :',self.spe_s[self.p_ind].item(),end=' ')
+    #     print('spe_n :',self.spe_n[self.p_ind].item(),end=' ')
+
+    #     print('conf_ :',self.is_conf[self.p_ind].item(),end=' ')
+    #     print('sens_ :',self.is_sens[self.p_ind].item(),end=' ')
+    #     print('sensv : ',self.sens_state[self.p_ind].item(),end=' ')
+
+    #     print('is_ki : ',self.is_killed[self.p_ind].item(),end=' ')
+    #     print('birth : ',self.births[self.p_ind].item(),end='')
+    #     print('groun : ',self.is_ground[self.p_ind].item(),end='\n')
+
     def kill_dead(self):
         is_alive = (1-self.is_killed)
         # Try to batch this operation
@@ -404,14 +467,41 @@ class VonNeumann(Automaton):
         self.spe_n = self.spe_n*is_alive
 
         self.is_conf = self.is_conf*is_alive
-        self.conf_in = self.conf_in*is_alive
-        self.conf_out = self.conf_out*is_alive
+        self.conf_in = self.conf_in*self.is_conf
+        self.conf_out = self.conf_out*self.is_conf
 
         self.compute_is_ord()
         self.compute_is_spe()
 
         self.excitations = self.excitations*is_alive
 
+    def check_no_problem(self):
+        # Sum should not be bigger than one, otherwise we have overlapping states :
+        problem_mask = self.ord_e+self.ord_w+self.ord_s+self.ord_n+self.spe_e+self.spe_w+self.spe_s+self.spe_n+self.is_conf+self.is_sens>1
+        problem_ind = problem_mask.nonzero()
+        if(problem_mask.any()):
+            print('----------------------- FOUND PROBLEM -----------------------')
+            print('ord_e : ',self.ord_e[problem_mask])
+          
+            print('ord_w :',self.ord_w[problem_mask])
+            
+            print('ord_s :',self.ord_s[problem_mask])
+        
+            print('ord_n :',self.ord_n[problem_mask])
+
+            print('spe_e :',self.spe_e[problem_mask])
+
+            print('spe_w :',self.spe_w[problem_mask])
+
+            print('spe_s :',self.spe_s[problem_mask])
+
+            print('spe_n :',self.spe_n[problem_mask])
+
+            print('conf :',self.is_conf[problem_mask])
+
+            print('sens :',self.is_sens[problem_mask])
+            raise Exception('Found overlapping states at indices : ',problem_ind)
+    
     def draw(self):
         self._worldmap = torch.zeros_like(self._worldmap)
         self._worldmap = torch.where(self.ord_e==1,1,self._worldmap)

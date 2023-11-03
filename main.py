@@ -9,26 +9,46 @@ from torchenhanced.util import showTens
 # Initialize the pygame screen 
 pygame.init()
 el_size = 10
-W,H = 128,128
+W,H = 220,128
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
 
 # Load the images for the automaton
-xm = pygame.transform.scale(pygame.image.load(graph_folder+'xm.png'), (el_size, el_size))
-xp = pygame.transform.scale(pygame.image.load(graph_folder+'xp.png'), (el_size, el_size))
-ym = pygame.transform.scale(pygame.image.load(graph_folder+'ym.png'), (el_size, el_size))
-yp = pygame.transform.scale(pygame.image.load(graph_folder+'yp.png'), (el_size, el_size))
+raw_images = {}
+raw_images['xm'] = pygame.image.load(graph_folder+'xm.png')
+raw_images['xp'] = pygame.image.load(graph_folder+'xp.png')
+raw_images['ym'] = pygame.image.load(graph_folder+'ym.png')
+raw_images['yp'] = pygame.image.load(graph_folder+'yp.png')
 
-sxm = pygame.transform.scale(pygame.image.load(graph_folder+'sxm.png'), (el_size, el_size))
-sxp = pygame.transform.scale(pygame.image.load(graph_folder+'sxp.png'), (el_size, el_size))
-sym = pygame.transform.scale(pygame.image.load(graph_folder+'sym.png'), (el_size, el_size))
-syp = pygame.transform.scale(pygame.image.load(graph_folder+'syp.png'), (el_size, el_size))
+raw_images['sxp'] = pygame.image.load(graph_folder+'sxp.png')
+raw_images['sxm'] = pygame.image.load(graph_folder+'sxm.png')
+raw_images['syp'] = pygame.image.load(graph_folder+'syp.png')
+raw_images['sym'] = pygame.image.load(graph_folder+'sym.png')
 
-conf = pygame.transform.scale(pygame.image.load(graph_folder+'conf0.png'), (el_size, el_size))
-sens0 = pygame.transform.scale(pygame.image.load(graph_folder+'sens0.png'), (el_size, el_size))
-excited = pygame.transform.scale(pygame.image.load(graph_folder+'excited.png'), (el_size, el_size))
-conf01 = pygame.transform.scale(pygame.image.load(graph_folder+'conf01.png'), (el_size, el_size))
+raw_images['conf'] = pygame.image.load(graph_folder+'conf0.png')
+raw_images['conf01'] = pygame.image.load(graph_folder+'conf01.png')
+raw_images['sens0'] = pygame.image.load(graph_folder+'sens0.png')
+raw_images['excited'] = pygame.image.load(graph_folder+'excited.png')
+
+images=[0]
+for key,value in raw_images.items():
+    print(f'{key}=pygame.transform.scale(raw_images["{key}"], (el_size, el_size))')
+    exec(f'{key} = pygame.transform.scale(raw_images["{key}"], (el_size, el_size))')
+# xm = pygame.transform.scale(pygame.image.load(graph_folder+'xm.png'), (el_size, el_size))
+# xp = pygame.transform.scale(pygame.image.load(graph_folder+'xp.png'), (el_size, el_size))
+# ym = pygame.transform.scale(pygame.image.load(graph_folder+'ym.png'), (el_size, el_size))
+# yp = pygame.transform.scale(pygame.image.load(graph_folder+'yp.png'), (el_size, el_size))
+
+# sxm = pygame.transform.scale(pygame.image.load(graph_folder+'sxm.png'), (el_size, el_size))
+# sxp = pygame.transform.scale(pygame.image.load(graph_folder+'sxp.png'), (el_size, el_size))
+# sym = pygame.transform.scale(pygame.image.load(graph_folder+'sym.png'), (el_size, el_size))
+# syp = pygame.transform.scale(pygame.image.load(graph_folder+'syp.png'), (el_size, el_size))
+
+# conf = pygame.transform.scale(pygame.image.load(graph_folder+'conf0.png'), (el_size, el_size))
+# sens0 = pygame.transform.scale(pygame.image.load(graph_folder+'sens0.png'), (el_size, el_size))
+# excited = pygame.transform.scale(pygame.image.load(graph_folder+'excited.png'), (el_size, el_size))
+# conf01 = pygame.transform.scale(pygame.image.load(graph_folder+'conf01.png'), (el_size, el_size))
 
 screen_W, screen_H = W*el_size, H*el_size
 
@@ -46,23 +66,32 @@ world_state = np.zeros((W,H,3),dtype=np.uint8)
 device='cpu'
 # Initialize the automaton
 auto = VonNeumann((H,W),device=device)
-state_opti = torch.load('best_state.pt',map_location=device)
-excitations = torch.load('initial_excitation.pt',map_location=device)
+# state_opti = torch.load('best_state.pt',map_location=device)
+# excitations = torch.load('initial_excitation.pt',map_location=device)
 
-auto.set_state(state_opti[None],excitations=excitations)
-# auto.excitations = excitations.expand_as(auto.excitations)
+# # auto.set_state(state_opti[None],excitations=excitations)
+# auto.set_state(torch.zeros_like(state_opti[None]),excitations=excitations)
+
+
+# uncomment for svaed state:
+# state = torch.load('save_state.pt',map_location=device)
+# excitations = torch.load('save_excitation.pt',map_location=device)
+# auto.set_state(state,excitations=excitations)
+
 #Uncomment for replicator
-# state = torch.zeros_like(auto.births)
-# state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
-# state[:,70:75,5+34] =4
-# auto.set_state(state)
-# auto.excitations = torch.zeros_like(auto.excitations)
-# auto.excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
+state = torch.zeros_like(auto.births)
+state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
+state[:,70:75,5+34] =4
+excitations = torch.zeros_like(auto.excitations)
+excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
+auto.set_state(state,excitations=excitations)
 
 updating = False
 recording = False
 launch_video = False
 
+blit_dict = {1:xp,2:xm,3:yp,4:ym,5:sxp,6:sxm,7:syp,8:sym,9:conf,10:sens0}
+blit_keys = {1:'xp',2:'xm',3:'yp',4:'ym',5:'sxp',6:'sxm',7:'syp',8:'sym',9:'conf',10:'sens0'}
 def draw_game_state(world_state,excited_state,conf_out,el_size):
     """
         Draws the game state on the screen, using the world_state array.
@@ -80,30 +109,14 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
 
     for i in range(W):
         for j in range(H):
-            type = world_state[i,j,0]
-            if(type==1):
-                surf.blit(xp, (i*el_size, j*el_size))
-            elif(type==2):
-                surf.blit(xm, (i*el_size, j*el_size))
-            elif(type==3):
-                surf.blit(yp, (i*el_size, j*el_size))
-            elif(type==4):
-                surf.blit(ym, (i*el_size, j*el_size))
-            elif(type==5):
-                surf.blit(sxp, (i*el_size, j*el_size))
-            elif(type==6):
-                surf.blit(sxm, (i*el_size, j*el_size))
-            elif(type==7):
-                surf.blit(syp, (i*el_size, j*el_size))
-            elif(type==8):
-                surf.blit(sym, (i*el_size, j*el_size))
-            elif(type==9):
+            status = world_state[i,j,0]
+            if(status!=9 and status!=0):
+                surf.blit(blit_dict[status], (i*el_size, j*el_size))
+            elif(status==9) :
                 if(conf_out[i,j,0]>0):
                     surf.blit(conf01, (i*el_size, j*el_size))
                 else:
                     surf.blit(conf, (i*el_size, j*el_size))
-            elif(type==10):
-                surf.blit(sens0, (i*el_size, j*el_size))
 
 
             if(excited_state[i,j,0]>0):
@@ -138,15 +151,20 @@ while running:
                 auto.kill_dead()
             if(event.key == pygame.K_RIGHT):
                 auto.step()
+            if(event.key == pygame.K_s):
+                statio = auto.get_state()
+                torch.save(statio,'save_state.pt')
+                torch.save(auto.excitations,'save_excitation.pt')
             if(event.key == pygame.K_BACKSPACE):
                 erasing=not erasing
             if event.key in [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
                 state = int(event.unicode)
+
         elif event.type == pygame.MOUSEBUTTONDOWN:
         # Check if the left mouse button was clicked
-            x, y = event.pos
-            x = x//el_size
-            y = y//el_size
+            x, y = camera.convert_mouse_pos(event.pos)
+            x = int(x//el_size)
+            y = int(y//el_size)
             if event.button == 3:
                 if(not erasing):
                     auto.excitations[:,y,x] = 1-auto.excitations[:,y,x]
@@ -154,8 +172,11 @@ while running:
                     auto.is_killed[:,max(y-5,0):min(y+5,H),max(x-5,0):min(x+5,W)] = 1
                     auto.kill_dead()
             if event.button == 1:
-                auto.births[:,y,x] = state
-                auto.make_births()
+                status = auto.get_state()
+                status[:,y,x] = state
+                auto.set_state(status,excitations=auto.excitations)
+                # auto.births[:,y,x] = state
+                # auto.make_births()
 
         # Handle the event loop for the camera (disabled for now)
         camera.handle_event(event)
@@ -168,7 +189,10 @@ while running:
     #Retrieve the world_state from automaton
     world_state, excited_state, conf_out = auto.worldmap
     surface= draw_game_state(world_state,excited_state,conf_out,el_size)
-
+    if(state!=0):
+        xmove,ymove=camera.convert_mouse_pos(pygame.mouse.get_pos())
+        surface.blit(raw_images[blit_keys[state]], (0, 0))
+        surface.blit(blit_dict[state], (xmove//el_size*el_size, ymove//el_size*el_size))
     #For recording
     if(recording):
         if(not launch_video):
@@ -197,7 +221,9 @@ while running:
 
     # Draw the scaled surface on the window (disabled for now)
     zoomed_surface = camera.apply(surface)
+
     screen.blit(zoomed_surface, (0, 0))
+
     clock.tick(fps)  # limits FPS
     curfps= clock.get_fps()
     fps_text = font.render("FPS: " + str(int(curfps)), True, (255,255,255),(0,0,0))  # Red color

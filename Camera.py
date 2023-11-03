@@ -49,6 +49,10 @@ class Camera:
         self.fov=pygame.Rect(0,0,int(self.size.w/self.zoom),int(self.size.h/self.zoom))
         self.fov.center = self.position
     
+    def convert_mouse_pos(self, pos):
+        """ Takes current mouse position, and converts it in the position given no zoom or camera offset"""
+        return (pos[0]/self.zoom+self.fov.left, pos[1]/self.zoom+self.fov.top)
+    
     def apply(self, surface):
         visible_surface = pygame.Surface((self.fov.w, self.fov.h))
 
