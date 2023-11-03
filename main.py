@@ -8,7 +8,7 @@ from torchenhanced.util import showTens
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 10
+el_size = 9
 W,H = 220,128
 
 font = pygame.font.SysFont(None, 25) 
@@ -63,13 +63,14 @@ fps = 60
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
-device='cpu'
+device='cuda:0'
 # Initialize the automaton
-auto = VonNeumann((H,W),device=device)
-# state_opti = torch.load('best_state.pt',map_location=device)
-# excitations = torch.load('initial_excitation.pt',map_location=device)
+auto = BoolVonNeumann((H,W),device=device)
+# auto.set_state(torch.ones((1,H,W)),excitations=torch.ones((1,H,W)).to(torch.bool))
+# state_opti = torch.load(os.path.join('states','best_state.pt'),map_location=device)
+# excitations = torch.load(os.path.join('states','initial_excitation.pt'),map_location=device)
 
-# # auto.set_state(state_opti[None],excitations=excitations)
+# auto.set_state(state_opti[None],excitations=excitations)
 # auto.set_state(torch.zeros_like(state_opti[None]),excitations=excitations)
 
 
@@ -80,10 +81,10 @@ auto = VonNeumann((H,W),device=device)
 
 #Uncomment for replicator
 state = torch.zeros_like(auto.births)
-state[:,2:70,5:210] = torch.load('repli.pt',map_location=device)[None,:,:]
+state[:,2:70,5:210] = torch.load(os.path.join('states','repli.pt'),map_location=device)[None,:,:]
 state[:,70:75,5+34] =4
 excitations = torch.zeros_like(auto.excitations)
-excitations[:,2:70,5:210]=torch.load('repli_exci.pt',map_location=device)[None,:,:]
+excitations[:,2:70,5:210]=torch.load(os.path.join('states','repli_exci.pt'),map_location=device)[None,:,:]
 auto.set_state(state,excitations=excitations)
 
 updating = False
@@ -167,7 +168,7 @@ while running:
             y = int(y//el_size)
             if event.button == 3:
                 if(not erasing):
-                    auto.excitations[:,y,x] = 1-auto.excitations[:,y,x]
+                    auto.excitations[:,y,x] = ~auto.excitations[:,y,x]
                 else:
                     auto.is_killed[:,max(y-5,0):min(y+5,H),max(x-5,0):min(x+5,W)] = 1
                     auto.kill_dead()

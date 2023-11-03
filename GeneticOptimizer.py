@@ -328,8 +328,8 @@ class BatchGeneticOptimizer:
 
         self.excitation_square = self.initial_excitation[:,:self.square_size[0],:self.square_size[1]]# Initial excitation which is square sized
 
-        torch.save(self.initial_excitation,'initial_excitation.pt')
-        torch.save(self.excitation_square,'excitation_square.pt')
+        torch.save(self.initial_excitation,os.path.join('states','initial_excitation.pt'))
+        torch.save(self.excitation_square,os.path.join('states','excitation_square.pt'))
 
         self.states=self.get_random_states(size)*(self.square_mask) # (B,H,W)
 
@@ -547,9 +547,9 @@ class BatchGeneticOptimizer:
             mean_fitness = statistics.mean(fitnesses)
             max_index = sorted_indices[0]
 
-            torch.save(self.states[max_index],'best_state.pt') # Should work, but I also should migrate everything to torch
+            torch.save(self.states[max_index],os.path.join('states','best_state.pt')) # Should work, but I also should migrate everything to torch
 
-            print(f'Gen {k} : {mean_fitness:}, best : {fitnesses[sorted_indices[0]]}''Mean fitness: ',mean_fitness)
+            print(f'Gen {k} : {mean_fitness:}, best : {fitnesses[sorted_indices[0]]}')
 
             surviving_states = [self.states[k] for k in sorted_indices[:num_survive]]
             reproducing_states = [self.states[k] for k in sorted_indices[:num_reprod]]
@@ -636,8 +636,8 @@ class BatchGeneticOptimizer:
             excitations = self.inject_square(excitations,self.excitation_square,(self.size[0]//4,self.size[1]//4))
             excitations = self.inject_square(excitations,self.excitation_square,(3*self.size[0]//4,3*self.size[1]//4))
 
-            torch.save(fight_state,'fight_state.pt')
-            torch.save(excitations,'fight_exci.pt')
+            torch.save(fight_state,os.path.join('states','fight_state.pt'))
+            torch.save(excitations,os.path.join('states','fight_exci.pt'))
 
 if __name__=='__main__':
     with torch.no_grad():
