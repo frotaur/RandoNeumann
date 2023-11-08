@@ -3,7 +3,7 @@ from torchenhanced.util import showTens
 import statistics, random, torch
 from tqdm import tqdm
 import numpy as np
-import time, itertools
+import time, itertools, os
 
 
 class GeneticOptimizer:
@@ -314,7 +314,7 @@ class BatchGeneticOptimizer:
     """
 
     def __init__(self,size,square_size,population_size,simulation_steps,mutation_rate=0.03,device='cpu'):
-        self.automaton = VonNeumann(size,device=device)
+        self.automaton = BoolVonNeumann(size,device=device)
 
         self.population_size = population_size
         self.simulation_steps = simulation_steps
@@ -459,7 +459,7 @@ class BatchGeneticOptimizer:
             self.automaton.step()
         
 
-        return (self.automaton.is_conf).to(torch.float32).mean(dim=(1,2)) # (B,) tensor with score for each batch element
+        return (~self.automaton.is_ground).to(torch.float32).mean(dim=(1,2)) # (B,) tensor with score for each batch element
 
     def fitness_diversity(self,states):
         """
@@ -541,7 +541,7 @@ class BatchGeneticOptimizer:
 
         
         for k in range(num_generations):
-            fitnesses = self.fitness_diversity(self.states).detach().cpu().numpy() # (B,) np array of fitnesses
+            fitnesses = self.fitness_num_states(self.states).detach().cpu().numpy() # (B,) np array of fitnesses
         
             sorted_indices = np.argsort(fitnesses)[::-1]
             mean_fitness = statistics.mean(fitnesses)
@@ -641,6 +641,6 @@ class BatchGeneticOptimizer:
 
 if __name__=='__main__':
     with torch.no_grad():
-        geno = BatchGeneticOptimizer((128,128),(20,20),60,500,0.03,device='cuda:0')
+        geno = BatchGeneticOptimizer((128,128),(5,5),60,500,0.05,device='cuda:0')
 
         geno.evolve(300)
