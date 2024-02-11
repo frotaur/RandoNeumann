@@ -9,7 +9,7 @@ from torchenhanced.util import showTens
 # Initialize the pygame screen 
 pygame.init()
 el_size = 9
-W,H = 128,128
+W,H = 64,64
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
@@ -57,7 +57,7 @@ running = True
 camera = Camera(screen_W,screen_H)
 
 
-fps = 120
+fps = 60
 
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
@@ -201,7 +201,7 @@ while running:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             numvids = len(os.listdir('Videos/'))
             vid_loc = f'Videos/Neu_{numvids}.mp4'
-            video_out = cv2.VideoWriter(vid_loc, fourcc, 15.0, (screen_W, screen_H))
+            video_out = cv2.VideoWriter(vid_loc, fourcc, 60.0, (screen_W, screen_H))
 
         # Convert Pygame surface to a string buffer
         frame_str = pygame.image.tostring(surface, "RGB")

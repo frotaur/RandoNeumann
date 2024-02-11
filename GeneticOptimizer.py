@@ -3,7 +3,7 @@ from torchenhanced.util import showTens
 import statistics, random, torch
 from tqdm import tqdm
 import numpy as np
-import time, itertools, os
+import time, itertools,os
 
 
 class GeneticOptimizer:
@@ -438,15 +438,15 @@ class BatchGeneticOptimizer:
         for _ in range(eval_period):
             self.automaton.step()
             excitation_table.append(self.automaton.excitations) #each is (B,H,W) 
-
         excitation_tensor = torch.stack(excitation_table,dim=1).to(torch.float32) # (B,eval_period,H,W)
-        score_tensor = torch.zeros_like(excitation_tensor) # (B,eval_period,H,W)
+        score_tensor = torch.zeros_like(excitation_tensor[:,0]) # (B,eval_period,H,W)
         for i in range(1, eval_period - 1):
             max_before = excitation_tensor[:,:i].max(dim=1) #(B,H,W) aggregated before excitations
             max_after = excitation_tensor[:,i:].max(dim=1) #(B,H,W) aggregated after excitations
-            score_tensor += (max_after - max_before).clamp(min=0)
 
-        return score_tensor.mean(dim=(1,2)) # (B,) tensor with score for each batch element
+            score_tensor += (max_after[0] - max_before[0]).clamp(min=0)
+
+        return score_tensor.cpu().detach().mean(dim=(1,2)) # (B,) tensor with score for each batch element
     
     def fitness_num_states(self,states):
         """
@@ -458,8 +458,26 @@ class BatchGeneticOptimizer:
         for _ in range(self.simulation_steps):
             self.automaton.step()
         
-
         return (~self.automaton.is_ground).to(torch.float32).mean(dim=(1,2)) # (B,) tensor with score for each batch element
+
+    def fitness_exci(self,states):
+        """
+            Fitness rewarding creation of states.
+        """
+        self.automaton.set_state(states,excitations=self.initial_excitation.expand_as(states))# BUG WARNING ! MAYBE WE NEED REPEAT INSTEAD, LOOK INSIDE AUTOMATON TO KNOW
+
+
+        for _ in range(self.simulation_steps):
+            self.automaton.step()
+        
+        exci_table = []
+        for _ in range(10):
+            # Evaluation period
+            self.automaton.step()
+            exci_table.append(self.automaton.excitations.clone())
+        exci_table = torch.stack(exci_table,dim=1) # (B,10,H,W)
+
+        return (exci_table).to(torch.float32).mean(dim=(1,2,3)) # (B,) tensor with score for each batch element
 
     def fitness_diversity(self,states):
         """
@@ -541,15 +559,15 @@ class BatchGeneticOptimizer:
 
         
         for k in range(num_generations):
-            fitnesses = self.fitness_num_states(self.states).detach().cpu().numpy() # (B,) np array of fitnesses
+            fitnesses = self.fitness_exci(self.states).detach().cpu().numpy() # (B,) np array of fitnesses
         
             sorted_indices = np.argsort(fitnesses)[::-1]
             mean_fitness = statistics.mean(fitnesses)
             max_index = sorted_indices[0]
+            if(k%10==0):
+                torch.save(self.states[max_index],os.path.join('states','best_state.pt')) # Should work, but I also should migrate everything to torch
 
-            torch.save(self.states[max_index],os.path.join('states','best_state.pt')) # Should work, but I also should migrate everything to torch
-
-            print(f'Gen {k} : {mean_fitness:}, best : {fitnesses[sorted_indices[0]]}')
+            print(f'Gen {k} : {mean_fitness=}, best : {fitnesses[sorted_indices[0]]}')
 
             surviving_states = [self.states[k] for k in sorted_indices[:num_survive]]
             reproducing_states = [self.states[k] for k in sorted_indices[:num_reprod]]
@@ -641,6 +659,7 @@ class BatchGeneticOptimizer:
 
 if __name__=='__main__':
     with torch.no_grad():
-        geno = BatchGeneticOptimizer((128,128),(5,5),60,500,0.05,device='cuda:0')
+        geno = BatchGeneticOptimizer((64,64),(35,35),60,
+                                     500,0.03,device='cuda:0')
 
         geno.evolve(300)

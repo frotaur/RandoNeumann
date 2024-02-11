@@ -596,7 +596,7 @@ class BoolVonNeumann(Automaton):
         super().__init__(size, device=device)
 
         self.p_ordinary, self.p_special, self.p_confluent = .3,.3,.3
-        state = self.get_rando_para_state(self.p_ordinary, self.p_special, self.p_confluent)
+        state = self.get_rando_para_state(self.p_ordinary, self.p_special, self.p_confluent,.1)
 
         
         # Excitations :
