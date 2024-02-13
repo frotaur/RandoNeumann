@@ -9,8 +9,8 @@ class Camera:
         self.updateFov()
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 4:  # Scroll wheel up
+        if event.type == pygame.MOUSEBUTTONDOWN and (pygame.key.get_mods() & pygame.KMOD_CTRL) :
+            if event.button == 4 :  # Scroll wheel up
                 self.zoom *= 1.1
             elif event.button == 5:  # Scroll wheel down
                 self.zoom /= 1.1

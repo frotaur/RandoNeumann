@@ -8,8 +8,8 @@ from torchenhanced.util import showTens
 
 # Initialize the pygame screen 
 pygame.init()
-el_size = 9
-W,H = 64,64
+el_size = 25
+W,H = 20,16
 
 font = pygame.font.SysFont(None, 25) 
 graph_folder = 'new_graph/'
@@ -46,19 +46,20 @@ for key,value in raw_images.items():
 
 # conf = pygame.transform.scale(pygame.image.load(graph_folder+'conf0.png'), (el_size, el_size))
 # sens0 = pygame.transform.scale(pygame.image.load(graph_folder+'sens0.png'), (el_size, el_size))
-# excited = pygame.transform.scale(pygame.image.load(graph_folder+'excited.png'), (el_size, el_size))
+# excited = pygame.transform.scale(pygame.image.load (graph_folder+'excited.png'), (el_size, el_size))
 # conf01 = pygame.transform.scale(pygame.image.load(graph_folder+'conf01.png'), (el_size, el_size))
 
 screen_W, screen_H = W*el_size, H*el_size
 
-screen = pygame.display.set_mode((screen_W,screen_H),flags=pygame.SCALED|pygame.RESIZABLE)
+screen = pygame.display.set_mode((screen_W,screen_H+el_size),flags=pygame.SCALED|pygame.RESIZABLE) # +16 for the 'hotbar'
+
 clock = pygame.time.Clock()
 running = True
 camera = Camera(screen_W,screen_H)
 
 
-fps = 60
-
+fps = 30
+vidfps=2
 #Initialize the world_state array, of size (W,H,3) of RGB values at each position.
 world_state = np.zeros((W,H,3),dtype=np.uint8)
 
@@ -66,10 +67,10 @@ device='cpu'
 # Initialize the automaton
 auto = BoolVonNeumann((H,W),device=device)
 # auto.set_state(torch.ones((1,H,W)),excitations=torch.ones((1,H,W)).to(torch.bool))
-state_opti = torch.load(os.path.join('states','best_state.pt'),map_location=device)
-excitations = torch.load(os.path.join('states','initial_excitation.pt'),map_location=device)
+# state_opti = torch.load(os.path.join('states','best_state.pt'),map_location=device)
+# excitations = torch.load(os.path.join('states','initial_excitation.pt'),map_location=device)
 
-auto.set_state(state_opti[None],excitations=excitations)
+# auto.set_state(state_opti[None],excitations=excitations)
 # auto.set_state(torch.zeros_like(state_opti[None]),excitations=excitations)
 
 
@@ -88,10 +89,11 @@ auto.set_state(state_opti[None],excitations=excitations)
 
 updating = False
 recording = False
-launch_video = False
+launch_video = True
 
 blit_dict = {1:xp,2:xm,3:yp,4:ym,5:sxp,6:sxm,7:syp,8:sym,9:conf,10:sens0}
 blit_keys = {1:'xp',2:'xm',3:'yp',4:'ym',5:'sxp',6:'sxm',7:'syp',8:'sym',9:'conf',10:'sens0'}
+
 def draw_game_state(world_state,excited_state,conf_out,el_size):
     """
         Draws the game state on the screen, using the world_state array.
@@ -117,8 +119,6 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
                     surf.blit(conf01, (i*el_size, j*el_size))
                 else:
                     surf.blit(conf, (i*el_size, j*el_size))
-
-
             if(excited_state[i,j,0]>0):
                 surf.blit(excited, (i*el_size, j*el_size))
     #PIXEL VIEWING, EFFICIENT BUT UGLY. Need el_size=1.
@@ -127,9 +127,63 @@ def draw_game_state(world_state,excited_state,conf_out,el_size):
 
     return surf
 
+def draw_hot_bar(cur_sel,el_size=16):
+    """
+        Draws the hot bar on the screen, using the world_state array.
+        For visualizing bigger pixels.
+
+        Args:
+            world_state (np.ndarray): (W,H,3) array of RGB uint8 values
+            el_size (int): size of the pixels in the pygame window
+        
+        Returns:
+
+    """
+    surf = pygame.Surface((el_size*10, el_size))
+
+    for i in range(0,10):
+        if(i>0):
+            surf.blit(blit_dict[i], (i*el_size, 0))
+        if(i==cur_sel):
+            pygame.draw.rect(surf, (0,255,0), (i*el_size, 0, el_size, el_size),1)
+
+    return surf
+
+def handle_mouse_input(pos,auto,left=True, erase_radius=1):
+    if left:
+        x, y = camera.convert_mouse_pos(pos)
+        if(y<screen_H):
+            x = int(x//el_size)
+            y = int(y//el_size)
+
+            status = auto.get_state()
+            status[:,y,x] = state
+            auto.set_state(status,excitations=auto.excitations)
+    else :
+        x, y = camera.convert_mouse_pos(pos)
+        if(y<screen_H):
+            x = int(x//el_size)
+            y = int(y//el_size)
+            if(not erasing):
+                auto.excitations[:,y,x] = True
+            else:
+                auto.is_killed[:,max(y-erase_radius,0):min(y+erase_radius,H),max(x-erase_radius,0):min(x+erase_radius,W)] = 1
+                auto.kill_dead()
+
 counter=0
 erasing = False
+drawing = False
+righting = False
+grid= True
 state = 0
+
+
+def drawGrid(el_size,screen):
+    for x in range(0, screen_W, el_size):
+        for y in range(0, screen_H, el_size):
+            rect = pygame.Rect(x, y, el_size, el_size)
+            pygame.draw.rect(screen, (150,150,150), rect, 1)
+
 while running:
     for event in pygame.event.get():
         # Event loop. Here we deal with all the interactivity
@@ -141,7 +195,12 @@ while running:
             if(event.key == pygame.K_SPACE):
                 updating=not updating
             if(event.key == pygame.K_r):
+                if(recording):
+                    print('release kraken')
+                    video_out.release()
+                    launch_video = True
                 recording= not recording
+                
             if(event.key ==pygame.K_o):
                 auto.reset_state()
             if(event.key == pygame.K_e):
@@ -155,28 +214,42 @@ while running:
                 statio = auto.get_state()
                 torch.save(statio,'save_state.pt')
                 torch.save(auto.excitations,'save_excitation.pt')
+            if (event.key == pygame.K_g):
+                grid = not grid
+            if(event.key == pygame.K_l):
+                if (fps==3):
+                    fps=30
+                else:
+                    fps=3
             if(event.key == pygame.K_BACKSPACE):
                 erasing=not erasing
             if event.key in [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
                 state = int(event.unicode)
-
         elif event.type == pygame.MOUSEBUTTONDOWN:
-        # Check if the left mouse button was clicked
-            x, y = camera.convert_mouse_pos(event.pos)
-            x = int(x//el_size)
-            y = int(y//el_size)
-            if event.button == 3:
-                if(not erasing):
-                    auto.excitations[:,y,x] = ~auto.excitations[:,y,x]
-                else:
-                    auto.is_killed[:,max(y-5,0):min(y+5,H),max(x-5,0):min(x+5,W)] = 1
-                    auto.kill_dead()
-            if event.button == 1:
-                status = auto.get_state()
-                status[:,y,x] = state
-                auto.set_state(status,excitations=auto.excitations)
-                # auto.births[:,y,x] = state
-                # auto.make_births()
+            if event.button == 4:  # Scroll up
+                state = (state+1)%10
+            elif event.button == 5:  # Scroll down
+                state = (state-1)%10
+
+            if event.button == 3 and not(pygame.key.get_mods() & pygame.KMOD_CTRL):
+                handle_mouse_input(event.pos,auto,left=False)
+                righting = True
+                drawing=False
+        
+            if event.button == 1 and not(pygame.key.get_mods() & pygame.KMOD_CTRL):
+                handle_mouse_input(event.pos,auto,left=True)
+                drawing = True
+                righting=False
+        elif event.type == pygame.MOUSEBUTTONUP:
+            drawing = False
+            righting = False
+    
+        elif event.type == pygame.MOUSEMOTION:
+            if drawing:
+                handle_mouse_input(event.pos,auto)
+            elif righting:
+                handle_mouse_input(event.pos,auto,left=False)
+
 
         # Handle the event loop for the camera (disabled for now)
         camera.handle_event(event)
@@ -191,17 +264,17 @@ while running:
     surface= draw_game_state(world_state,excited_state,conf_out,el_size)
     if(state!=0):
         xmove,ymove=camera.convert_mouse_pos(pygame.mouse.get_pos())
-        surface.blit(raw_images[blit_keys[state]], (0, 0))
+        # surface.blit(raw_images[blit_keys[state]], (0, 0))
         surface.blit(blit_dict[state], (xmove//el_size*el_size, ymove//el_size*el_size))
     #For recording
     if(recording):
-        if(not launch_video):
-            launch_video = True
+        if(launch_video):
+            launch_video = False
             os.makedirs('Videos',exist_ok=True)
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')
             numvids = len(os.listdir('Videos/'))
             vid_loc = f'Videos/Neu_{numvids}.mp4'
-            video_out = cv2.VideoWriter(vid_loc, fourcc, 60.0, (screen_W, screen_H))
+            video_out = cv2.VideoWriter(vid_loc, fourcc, vidfps, (screen_W, screen_H))
 
         # Convert Pygame surface to a string buffer
         frame_str = pygame.image.tostring(surface, "RGB")
@@ -218,11 +291,15 @@ while running:
     
     # Clear the screen
     screen.fill((0, 0, 0))
-
     # Draw the scaled surface on the window (disabled for now)
     zoomed_surface = camera.apply(surface)
 
     screen.blit(zoomed_surface, (0, 0))
+    hot_bar = draw_hot_bar(state,el_size)
+
+    screen.blit(hot_bar, (0, screen_H))
+    if(grid):
+        drawGrid(el_size,screen)
 
     clock.tick(fps)  # limits FPS
     curfps= clock.get_fps()
@@ -234,7 +311,7 @@ while running:
     counter+=1
 
 
-if(launch_video):
+if(not launch_video):
     print('release kraken')
     video_out.release()
 
